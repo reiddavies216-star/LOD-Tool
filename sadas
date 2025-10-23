@@ -1,0 +1,137 @@
+from maya import cmds
+
+def lod_tool():
+    # Delete existing window if it exists
+    if cmds.window("lodToolWin", exists=True):
+        cmds.deleteUI("lodToolWin", window=True)
+
+    # Create new window
+    cmds.window("lodToolWin", title="LOD Tool", widthHeight=(350, 180))
+    cmds.columnLayout(adjustableColumn=True, rowSpacing=10)
+
+    cmds.text(label="Select a mesh to adjust PolyCount", align="center")
+    cmds.text("selectedMeshLabel", label="Selected Mesh: None", align="center")
+
+    lod_data = {"mesh": None, "polyReduceNode": None}
+
+    # -------------------------------------------------------------
+    # Gradient Colour Utilities
+    # -------------------------------------------------------------
+
+    def create_temp_shader(name):
+        """Create or reuse a lambert shader."""
+        if not cmds.objExists(name):
+            shader = cmds.shadingNode('lambert', asShader=True, name=name)
+        else:
+            shader = name
+        return shader
+
+    gradient_mat = create_temp_shader('polyDensityGradient_MAT')
+
+    def interpolate_colour(value, low, high):
+        """
+        Returns an (R, G, B) tuple interpolated from:
+        Blue (low) → Green (mid) → Red (high)
+        """
+        if value <= low:
+            return (0.0, 0.2, 1.0)  # Blue
+        elif value >= high:
+            return (1.0, 0.0, 0.0)  # Red
+        else:
+            t = (value - low) / (high - low)
+            if t < 0.5:
+                # Blue → Green
+                t2 = t / 0.5
+                return (0.0 * (1 - t2) + 0.0 * t2,
+                        0.2 * (1 - t2) + 1.0 * t2,
+                        1.0 * (1 - t2) + 0.0 * t2)
+            else:
+                # Green → Red
+                t2 = (t - 0.5) / 0.5
+                return (0.0 * (1 - t2) + 1.0 * t2,
+                        1.0 * (1 - t2) + 0.0 * t2,
+                        0.0 * (1 - t2) + 0.0 * t2)
+
+    def apply_colour_gradient(mesh, low_threshold=100, high_threshold=5000):
+        """Applies a gradient colour to a mesh based on face count."""
+        shapes = cmds.listRelatives(mesh, shapes=True, fullPath=True) or []
+        if not shapes:
+            return
+        shape = shapes[0]
+        face_count = cmds.polyevaluate(shape, face=True)
+
+        colour = interpolate_colour(face_count, low_threshold, high_threshold)
+        cmds.setAttr(f"{gradient_mat}.color", *colour, type='double3')
+
+        cmds.select(mesh, replace=True)
+        cmds.hyperShade(assign=gradient_mat)
+        cmds.select(clear=True)
+
+    # -------------------------------------------------------------
+    # LOD Functions
+    # -------------------------------------------------------------
+
+    def select_mesh(*_):
+        sel = cmds.ls(selection=True)
+        if not sel:
+            cmds.warning("Select a mesh first.")
+            return
+        mesh = sel[0]
+        shapes = cmds.listRelatives(mesh, shapes=True, fullPath=True) or []
+        if not shapes or cmds.nodeType(shapes[0]) != "mesh":
+            cmds.warning("Not a mesh.")
+            return
+
+        if lod_data["polyReduceNode"] and cmds.objExists(lod_data["polyReduceNode"]):
+            cmds.delete(lod_data["polyReduceNode"])
+
+        lod_data["mesh"] = mesh
+        res = cmds.polyReduce(mesh, version=1, termination=0, percentage=0,
+                              keepBorder=True, replaceOriginal=True, ch=True)
+
+        if res and len(res) > 1:
+            lod_data["polyReduceNode"] = res[1]
+        else:
+            history = cmds.listHistory(mesh) or []
+            for node in reversed(history):
+                if cmds.nodeType(node) == "polyReduce":
+                    lod_data["polyReduceNode"] = node
+                    break
+
+        if not lod_data["polyReduceNode"]:
+            cmds.warning("Couldn't create polyReduce node.")
+            lod_data["mesh"] = None
+            return
+
+        cmds.text("selectedMeshLabel", edit=True, label=f"Selected Mesh: {mesh}")
+        cmds.floatSlider("reductionSlider", edit=True, value=0)
+        cmds.text("reductionLabel", edit=True, label="Reduction: 0%")
+
+        apply_colour_gradient(mesh)
+
+    def update_reduction(value):
+        pr_node = lod_data.get("polyReduceNode")
+        mesh = lod_data.get("mesh")
+        if not pr_node or not cmds.objExists(pr_node):
+            cmds.warning("No polyReduce node found. Select a mesh first.")
+            return
+        cmds.setAttr(pr_node + ".termination", 0)
+        cmds.setAttr(pr_node + ".percentage", value)
+        cmds.dgdirty(pr_node)
+
+        if mesh and cmds.objExists(mesh):
+            apply_colour_gradient(mesh)
+
+        cmds.text("reductionLabel", edit=True, label=f"Reduction: {int(value)}%")
+
+    # -------------------------------------------------------------
+    # UI Wiring
+    # -------------------------------------------------------------
+    cmds.floatSlider("reductionSlider", min=0, max=99, value=0, step=1, dragCommand=update_reduction)
+    cmds.text("reductionLabel", label="Reduction: 0%", align="center")
+    cmds.button(label="Select Mesh", command=select_mesh)
+
+    cmds.showWindow("lodToolWin")
+
+# Run the tool
+lod_tool()

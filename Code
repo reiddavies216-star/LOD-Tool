@@ -1,0 +1,41 @@
+from maya import cmds
+
+if cmds.window('w_maya_ui', ex=True):
+    cmds.deleteUI('w_maya_ui', window = True)
+
+cmds.window('w_maya_ui', title= 'Maya UI Window', widthHeight=(500, 600))
+ 
+cmds.columnLayout(adjustableColumn=True)
+
+cmds.button(label="Button", command=lambda x: cmds.confirmDialog(title="Button Clicked", message="Button Pressed!"))
+
+cmds.text(label="This is a text label", align="center")
+
+cmds.intSlider(min=0, max=100, value=50, step=1, dragCommand=lambda val: cmds.text("intSliderVal", e=True, label=f"Int Slider Value: {val}"))
+cmds.text("intSliderVal", label="Int Slider Value: 50")
+
+cmds.floatSlider(min=0.0, max=1.0, value=0.5, step=0.01, dragCommand=lambda val: cmds.text("floatSliderVal", e=True, label=f"Float Slider Value: {val:.2f}"))
+cmds.text("floatSliderVal", label="Float Slider Value: 0.50")
+
+cmds.textField("textFieldControl", placeholderText="Type something here...")
+
+cmds.optionMenu("optionMenuControl", label="Choose an option: ")
+cmds.menuItem(label="Option 1")
+cmds.menuItem(label="Option 2")
+cmds.menuItem(label="Option 3")
+
+cmds.checkBox('Checkbox', label="Check this box", value=False, changeCommand = lambda val: print(cmds.checkBox("Checkbox", query = True, value=True)))
+
+cmds.radioButtonGrp('RadioButton', label="Choose one: ", labelArray3=["Option A", "Option B", "Option C"], numberOfRadioButtons=3, select=1)
+
+cmds.colorSliderGrp("Color", label="Pick a color", rgb=(0.5, 0.5, 0.5), changeCommand=lambda val: print(cmds.colorSliderGrp("Color", q = True, rgb=True)))
+
+cmds.separator(height=10, style='in')
+
+cmds.frameLayout(label="Frame Layout Example", collapsable=True)
+cmds.columnLayout(adjustableColumn=True)
+cmds.text(label="Inside a Frame Layout")
+cmds.button(label="Frame Button")
+cmds.setParent("..")  
+
+cmds.showWindow('w_maya_ui')

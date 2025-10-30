@@ -10,7 +10,6 @@ def lod_tool():
     cmds.text(label="Select a mesh to adjust PolyCount", align="center")
     cmds.text("selectedMeshLabel", label="Selected Mesh: None", align="center")
 
-    # ---- Internal Data ----
     lod_data = {"mesh": None, "polyReduceNode": None, "ngons": []}
 
     # -------------------------------
@@ -90,14 +89,14 @@ def lod_tool():
         shader_name = "ngonHighlight_MAT"
         sg_name = shader_name + "SG"
 
-        # Remove highlight shader if it already exists
+        
         if cmds.objExists(shader_name):
             cmds.delete(shader_name, sg_name)
             print("Removed N-Gon highlight shader — scene restored to original materials.")
             lod_data["ngons"].clear()
             return
 
-        # Check for invalid geometry
+        
         bad_edges = cmds.polyInfo(invalidEdges=True) or []
         bad_verts = cmds.polyInfo(invalidVertices=True) or []
         lamina = cmds.polyInfo(laminaFaces=True) or []
@@ -108,7 +107,7 @@ def lod_tool():
         if lamina: print("Lamina Faces:", lamina)
         if non_manifold: print("Non-Manifold Edges:", non_manifold)
 
-        # --- N-Gon Detection ---
+        
         ngons = []
         print("\nChecking for N-Gons (faces with more than 4 sides)...")
 
@@ -124,9 +123,9 @@ def lod_tool():
             for ngon in ngons:
                 print(f"  {ngon}")
 
-            lod_data["ngons"] = ngons  # Store them for triangulation later
+            lod_data["ngons"] = ngons
 
-            # Create red highlight shader
+            
             shader = cmds.shadingNode('lambert', asShader=True, name=shader_name)
             sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=sg_name)
             cmds.connectAttr(shader + ".outColor", sg + ".surfaceShader", force=True)
@@ -148,12 +147,31 @@ def lod_tool():
     def triangulate_ngons(*_):
         ngons = lod_data.get("ngons", [])
         if not ngons:
-            return
+                cmds.warning("No N-Gons found. Run 'Check Topology' first.")
+                return
+
+            print(f"Triangulating {len(ngons)} N-Gons...")
+
+           
             cmds.select(ngons, replace=True)
-        else:
-            cmds.polyTriangulate()
-            print("Triangulation complete.")
-            lod_data["ngons"].clear()
+
+            try:
+                cmds.polyTriangulate()
+                print("Triangulation complete.")
+                lod_data["ngons"].clear()
+
+            
+                shader_name = "ngonHighlight_MAT"
+                sg_name = shader_name + "SG"
+                if cmds.objExists(shader_name):
+                    cmds.delete(shader_name, sg_name)
+                    print("Removed N-Gon highlight shader after triangulation.")
+
+                cmds.select(clear=True)
+
+            except Exception as e:
+                cmds.warning(f"Error during triangulation: {e}")
+
 
     # -------------------
     # --- UI Buttons ---
@@ -181,9 +199,9 @@ class ColourChanger:
 
     def interpolate_colour(value, low, high):
         if value <= low:
-            return (0.0, 0.2, 1.0)  # Blue
+            return (0.0, 0.2, 1.0) 
         elif value >= high:
-            return (1.0, 0.0, 0.0)  # Red
+            return (1.0, 0.0, 0.0)  
         else:
             t = (value - low) / (high - low)
             if t < 0.5:

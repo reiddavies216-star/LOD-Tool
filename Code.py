@@ -4,7 +4,7 @@ def lod_tool():
     if cmds.window("lodToolWin", exists=True):
         cmds.deleteUI("lodToolWin")
 
-    cmds.window("lodToolWin", title="LOD Tool", widthHeight=(350, 260))
+    cmds.window("lodToolWin", title="LOD Tool", widthHeight=(350, 360))
     cmds.columnLayout(adjustableColumn=True, rowSpacing=10)
 
     cmds.text(label="Select a mesh to adjust PolyCount", align="center")
@@ -89,14 +89,12 @@ def lod_tool():
         shader_name = "ngonHighlight_MAT"
         sg_name = shader_name + "SG"
 
-        
         if cmds.objExists(shader_name):
             cmds.delete(shader_name, sg_name)
             print("Removed N-Gon highlight shader — scene restored to original materials.")
             lod_data["ngons"].clear()
             return
 
-        
         bad_edges = cmds.polyInfo(invalidEdges=True) or []
         bad_verts = cmds.polyInfo(invalidVertices=True) or []
         lamina = cmds.polyInfo(laminaFaces=True) or []
@@ -107,7 +105,6 @@ def lod_tool():
         if lamina: print("Lamina Faces:", lamina)
         if non_manifold: print("Non-Manifold Edges:", non_manifold)
 
-        
         ngons = []
         print("\nChecking for N-Gons (faces with more than 4 sides)...")
 
@@ -125,7 +122,6 @@ def lod_tool():
 
             lod_data["ngons"] = ngons
 
-            
             shader = cmds.shadingNode('lambert', asShader=True, name=shader_name)
             sg = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=sg_name)
             cmds.connectAttr(shader + ".outColor", sg + ".surfaceShader", force=True)
@@ -147,31 +143,23 @@ def lod_tool():
     def triangulate_ngons(*_):
         ngons = lod_data.get("ngons", [])
         if not ngons:
-                cmds.warning("No N-Gons found. Run 'Check Topology' first.")
-                return
+            return
+        cmds.select(ngons, replace=True)
 
-            print(f"Triangulating {len(ngons)} N-Gons...")
+        try:
+            cmds.polyTriangulate()
+            print("Triangulation complete.")
+            lod_data["ngons"].clear()
 
-           
-            cmds.select(ngons, replace=True)
+            shader_name = "ngonHighlight_MAT"
+            sg_name = shader_name + "SG"
+            if cmds.objExists(shader_name):
+                cmds.delete(shader_name, sg_name)
 
-            try:
-                cmds.polyTriangulate()
-                print("Triangulation complete.")
-                lod_data["ngons"].clear()
+            cmds.select(clear=True)
 
-            
-                shader_name = "ngonHighlight_MAT"
-                sg_name = shader_name + "SG"
-                if cmds.objExists(shader_name):
-                    cmds.delete(shader_name, sg_name)
-                    print("Removed N-Gon highlight shader after triangulation.")
-
-                cmds.select(clear=True)
-
-            except Exception as e:
-                cmds.warning(f"Error during triangulation: {e}")
-
+        except Exception as e:
+            cmds.warning(f"Error during triangulation: {e}")
 
     # -------------------
     # --- UI Buttons ---
@@ -179,6 +167,30 @@ def lod_tool():
     cmds.button(label="Select Mesh", command=select_mesh)
     cmds.button(label="Check Topology (N-Gons etc.)", bgc=(0.3, 0.6, 0.3), command=check_topology)
     cmds.button(label="Triangulate N-Gons", bgc=(0.8, 0.4, 0.4), command=triangulate_ngons)
+
+    # ------------------------------
+    # --- PolyCount Highlighter ---
+    # ------------------------------
+    cmds.separator(height=10, style='in')
+    cmds.text(label="Poly Density Colour Highlighter", align="center", height=20, bgc=(0.2, 0.2, 0.2))
+
+    cmds.floatFieldGrp("lowHighThresholds",
+                       numberOfFields=2,
+                       label="Thresholds (Low / High):",
+                       value1=100,
+                       value2=5000)
+
+    def apply_colour_highlight(*_):
+        sel = cmds.ls(selection=True)
+        if not sel:
+            cmds.warning("Select a mesh to apply colour gradient.")
+            return
+        mesh = sel[0]
+        low, high = cmds.floatFieldGrp("lowHighThresholds", q=True, value=True)
+        ColourChanger.apply_colour_gradient(mesh, low_threshold=low, high_threshold=high)
+        print(f"Applied poly density colour gradient — Low:{low}, High:{high}")
+
+    cmds.button(label="Apply Poly Density Gradient", bgc=(0.2, 0.5, 0.8), command=apply_colour_highlight)
 
     cmds.showWindow("lodToolWin")
 
@@ -199,9 +211,9 @@ class ColourChanger:
 
     def interpolate_colour(value, low, high):
         if value <= low:
-            return (0.0, 0.2, 1.0) 
+            return (0.0, 0.2, 1.0)
         elif value >= high:
-            return (1.0, 0.0, 0.0)  
+            return (1.0, 0.0, 0.0)
         else:
             t = (value - low) / (high - low)
             if t < 0.5:
